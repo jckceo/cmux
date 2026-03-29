@@ -12010,8 +12010,40 @@ private struct TabItemView: View, Equatable {
         }
 
         Button(String(localized: "contextMenu.newSpaceFromWorkspace", defaultValue: "New Space from Workspace…")) {
-            let space = tabManager.addSpace(name: tab.customTitle ?? tab.title)
-            tabManager.moveWorkspaceToSpace(workspaceId: tab.id, spaceId: space.id)
+            let alert = NSAlert()
+            alert.messageText = String(localized: "space.newAlert.title", defaultValue: "New Space")
+            alert.informativeText = String(localized: "space.newAlert.message", defaultValue: "Enter a name for the new space:")
+            alert.addButton(withTitle: String(localized: "space.newAlert.create", defaultValue: "Create"))
+            alert.addButton(withTitle: String(localized: "space.newAlert.cancel", defaultValue: "Cancel"))
+            let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+            textField.stringValue = tab.customTitle ?? tab.title
+            textField.placeholderString = String(localized: "space.newAlert.placeholder", defaultValue: "Space name")
+            alert.accessoryView = textField
+            alert.window.initialFirstResponder = textField
+            if alert.runModal() == .alertFirstButtonReturn {
+                let name = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !name.isEmpty {
+                    let space = tabManager.addSpace(name: name)
+                    tabManager.moveWorkspaceToSpace(workspaceId: tab.id, spaceId: space.id)
+                }
+            }
+        }
+
+        if !tabManager.spaces.isEmpty || tab.spaceId != nil {
+            Menu(String(localized: "contextMenu.moveToSpace", defaultValue: "Move to Space")) {
+                ForEach(tabManager.spaces) { space in
+                    Button(space.name) {
+                        tabManager.moveWorkspaceToSpace(workspaceId: tab.id, spaceId: space.id)
+                    }
+                    .disabled(tab.spaceId == space.id)
+                }
+                if tab.spaceId != nil {
+                    Divider()
+                    Button(String(localized: "contextMenu.removeFromSpace", defaultValue: "Remove from Space")) {
+                        tabManager.moveWorkspaceToSpace(workspaceId: tab.id, spaceId: nil)
+                    }
+                }
+            }
         }
 
         if let copyableSidebarSSHError {
@@ -13525,6 +13557,11 @@ private struct SidebarTabDropDelegate: DropDelegate {
         _ = tabManager.reorderWorkspace(tabId: draggedTabId, toIndex: targetIndex)
         if targetTabId == nil {
             tabManager.moveWorkspaceToSpace(workspaceId: draggedTabId, spaceId: nil)
+        } else if let targetTabId,
+                  let targetWorkspace = tabManager.tabs.first(where: { $0.id == targetTabId }),
+                  let targetSpaceId = targetWorkspace.spaceId {
+            // Auto-assign to Space: if target workspace is in a Space, join it
+            tabManager.moveWorkspaceToSpace(workspaceId: draggedTabId, spaceId: targetSpaceId)
         }
         if let selectedId = tabManager.selectedTabId {
             selectedTabIds = [selectedId]
