@@ -6044,27 +6044,41 @@ struct ContentView: View {
                 alert.addButton(withTitle: String(localized: "space.newAlert.create", defaultValue: "Create"))
                 alert.addButton(withTitle: String(localized: "space.newAlert.cancel", defaultValue: "Cancel"))
 
-                let container = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 54))
+                let container = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 58))
 
                 let nameLabel = NSTextField(labelWithString: String(localized: "space.newAlert.nameLabel", defaultValue: "Name:"))
-                nameLabel.frame = NSRect(x: 0, y: 32, width: 50, height: 18)
+                nameLabel.frame = NSRect(x: 0, y: 36, width: 50, height: 18)
                 nameLabel.font = .systemFont(ofSize: 12)
                 container.addSubview(nameLabel)
 
                 let nameField = NSTextField(string: "")
                 nameField.placeholderString = String(localized: "space.newAlert.placeholder", defaultValue: "Space name")
-                nameField.frame = NSRect(x: 52, y: 30, width: 188, height: 22)
+                nameField.frame = NSRect(x: 52, y: 34, width: 188, height: 22)
                 container.addSubview(nameField)
 
                 let colorLabel = NSTextField(labelWithString: String(localized: "space.newAlert.colorLabel", defaultValue: "Color:"))
-                colorLabel.frame = NSRect(x: 0, y: 2, width: 50, height: 18)
+                colorLabel.frame = NSRect(x: 0, y: 6, width: 50, height: 18)
                 colorLabel.font = .systemFont(ofSize: 12)
                 container.addSubview(colorLabel)
 
-                let colorField = NSTextField(string: "")
-                colorField.placeholderString = String(localized: "space.newAlert.colorPlaceholder", defaultValue: "#8B5CF6 (optional)")
-                colorField.frame = NSRect(x: 52, y: 0, width: 188, height: 22)
-                container.addSubview(colorField)
+                let colorPopup = NSPopUpButton(frame: NSRect(x: 50, y: 2, width: 190, height: 26), pullsDown: false)
+                colorPopup.addItem(withTitle: String(localized: "space.newAlert.noColor", defaultValue: "None"))
+                let palette = WorkspaceTabColorSettings.palette()
+                for entry in palette {
+                    let item = NSMenuItem(title: entry.name, action: nil, keyEquivalent: "")
+                    if let nsColor = NSColor(hex: entry.hex) {
+                        let size: CGFloat = 12
+                        let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+                            nsColor.setFill()
+                            NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3).fill()
+                            return true
+                        }
+                        item.image = image
+                    }
+                    item.representedObject = entry.hex
+                    colorPopup.menu?.addItem(item)
+                }
+                container.addSubview(colorPopup)
 
                 alert.accessoryView = container
                 alert.window.initialFirstResponder = nameField
@@ -6076,9 +6090,8 @@ struct ContentView: View {
                 if alert.runModal() == .alertFirstButtonReturn {
                     let name = nameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !name.isEmpty {
-                        let colorHex = colorField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let color: String? = colorHex.isEmpty ? nil : colorHex
-                        tabManager.addSpace(name: name, color: color)
+                        let selectedColor = colorPopup.selectedItem?.representedObject as? String
+                        tabManager.addSpace(name: name, color: selectedColor)
                     }
                 }
             }
@@ -12037,40 +12050,6 @@ private struct TabItemView: View, Equatable {
             }
         }
 
-        Menu(String(localized: "contextMenu.moveWorkspaceToSpace", defaultValue: "Move Workspace to Space")) {
-            ForEach(tabManager.spaces) { space in
-                Button(space.name) {
-                    for id in targetIds {
-                        tabManager.moveWorkspaceToSpace(workspaceId: id, spaceId: space.id)
-                    }
-                }
-                .disabled(targetIds.count == 1 && tab.spaceId == space.id)
-            }
-
-            if !tabManager.spaces.isEmpty {
-                Divider()
-            }
-
-            Button(String(localized: "contextMenu.newSpace", defaultValue: "New Space…")) {
-                let ids = targetIds
-                let defaultName = tab.customTitle ?? tab.title
-                DispatchQueue.main.async {
-                    promptNewSpaceAndMove(defaultName: defaultName, workspaceIds: ids)
-                }
-            }
-
-            if targetIds.contains(where: { id in
-                tabManager.tabs.first(where: { $0.id == id })?.spaceId != nil
-            }) {
-                Divider()
-                Button(String(localized: "contextMenu.removeFromSpace", defaultValue: "Remove from Space")) {
-                    for id in targetIds {
-                        tabManager.moveWorkspaceToSpace(workspaceId: id, spaceId: nil)
-                    }
-                }
-            }
-        }
-
         if let copyableSidebarSSHError {
             Button(String(localized: "contextMenu.copySshError", defaultValue: "Copy SSH Error")) {
                 copyTextToPasteboard(copyableSidebarSSHError)
@@ -12118,6 +12097,40 @@ private struct TabItemView: View, Equatable {
             }
         }
         .disabled(targetIds.isEmpty)
+
+        Menu(String(localized: "contextMenu.moveWorkspaceToSpace", defaultValue: "Move Workspace to Space")) {
+            ForEach(tabManager.spaces) { space in
+                Button(space.name) {
+                    for id in targetIds {
+                        tabManager.moveWorkspaceToSpace(workspaceId: id, spaceId: space.id)
+                    }
+                }
+                .disabled(targetIds.count == 1 && tab.spaceId == space.id)
+            }
+
+            if !tabManager.spaces.isEmpty {
+                Divider()
+            }
+
+            Button(String(localized: "contextMenu.newSpace", defaultValue: "New Space…")) {
+                let ids = targetIds
+                let defaultName = tab.customTitle ?? tab.title
+                DispatchQueue.main.async {
+                    promptNewSpaceAndMove(defaultName: defaultName, workspaceIds: ids)
+                }
+            }
+
+            if targetIds.contains(where: { id in
+                tabManager.tabs.first(where: { $0.id == id })?.spaceId != nil
+            }) {
+                Divider()
+                Button(String(localized: "contextMenu.removeFromSpace", defaultValue: "Remove from Space")) {
+                    for id in targetIds {
+                        tabManager.moveWorkspaceToSpace(workspaceId: id, spaceId: nil)
+                    }
+                }
+            }
+        }
 
         Divider()
 
@@ -12785,27 +12798,41 @@ private struct TabItemView: View, Equatable {
         alert.addButton(withTitle: String(localized: "space.newAlert.create", defaultValue: "Create"))
         alert.addButton(withTitle: String(localized: "space.newAlert.cancel", defaultValue: "Cancel"))
 
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 54))
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 58))
 
         let nameLabel = NSTextField(labelWithString: String(localized: "space.newAlert.nameLabel", defaultValue: "Name:"))
-        nameLabel.frame = NSRect(x: 0, y: 32, width: 50, height: 18)
+        nameLabel.frame = NSRect(x: 0, y: 36, width: 50, height: 18)
         nameLabel.font = .systemFont(ofSize: 12)
         container.addSubview(nameLabel)
 
         let nameField = NSTextField(string: defaultName)
         nameField.placeholderString = String(localized: "space.newAlert.placeholder", defaultValue: "Space name")
-        nameField.frame = NSRect(x: 52, y: 30, width: 188, height: 22)
+        nameField.frame = NSRect(x: 52, y: 34, width: 188, height: 22)
         container.addSubview(nameField)
 
         let colorLabel = NSTextField(labelWithString: String(localized: "space.newAlert.colorLabel", defaultValue: "Color:"))
-        colorLabel.frame = NSRect(x: 0, y: 2, width: 50, height: 18)
+        colorLabel.frame = NSRect(x: 0, y: 6, width: 50, height: 18)
         colorLabel.font = .systemFont(ofSize: 12)
         container.addSubview(colorLabel)
 
-        let colorField = NSTextField(string: "")
-        colorField.placeholderString = String(localized: "space.newAlert.colorPlaceholder", defaultValue: "#8B5CF6 (optional)")
-        colorField.frame = NSRect(x: 52, y: 0, width: 188, height: 22)
-        container.addSubview(colorField)
+        let colorPopup = NSPopUpButton(frame: NSRect(x: 50, y: 2, width: 190, height: 26), pullsDown: false)
+        colorPopup.addItem(withTitle: String(localized: "space.newAlert.noColor", defaultValue: "None"))
+        let palette = WorkspaceTabColorSettings.palette()
+        for entry in palette {
+            let item = NSMenuItem(title: entry.name, action: nil, keyEquivalent: "")
+            if let nsColor = NSColor(hex: entry.hex) {
+                let size: CGFloat = 12
+                let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+                    nsColor.setFill()
+                    NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3).fill()
+                    return true
+                }
+                item.image = image
+            }
+            item.representedObject = entry.hex
+            colorPopup.menu?.addItem(item)
+        }
+        container.addSubview(colorPopup)
 
         alert.accessoryView = container
         let alertWindow = alert.window
@@ -12819,9 +12846,8 @@ private struct TabItemView: View, Equatable {
         guard response == .alertFirstButtonReturn else { return }
         let name = nameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
-        let colorHex = colorField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let color: String? = colorHex.isEmpty ? nil : colorHex
-        let space = tabManager.addSpace(name: name, color: color)
+        let selectedColor = colorPopup.selectedItem?.representedObject as? String
+        let space = tabManager.addSpace(name: name, color: selectedColor)
         for id in workspaceIds {
             tabManager.moveWorkspaceToSpace(workspaceId: id, spaceId: space.id)
         }
