@@ -8574,6 +8574,14 @@ private struct SpaceHeaderView: View {
         .onTapGesture {
             tabManager.toggleSpaceCollapsed(spaceId: space.id)
         }
+        .onDrop(of: SidebarTabDragPayload.dropContentTypes, isTargeted: nil) { _ in
+            guard let draggedId = draggedTabId else { return false }
+            tabManager.moveWorkspaceToSpace(workspaceId: draggedId, spaceId: space.id)
+            if space.isCollapsed {
+                tabManager.toggleSpaceCollapsed(spaceId: space.id)
+            }
+            return true
+        }
         .contextMenu {
             Button(String(localized: "contextMenu.renameSpace", defaultValue: "Rename Space")) {
                 renameText = space.name
@@ -11951,6 +11959,11 @@ private struct TabItemView: View, Equatable {
             }
         }
 
+        Button(String(localized: "contextMenu.newSpaceFromWorkspace", defaultValue: "New Space from Workspace…")) {
+            let space = tabManager.addSpace(name: tab.customTitle ?? tab.title)
+            tabManager.moveWorkspaceToSpace(workspaceId: tab.id, spaceId: space.id)
+        }
+
         if let copyableSidebarSSHError {
             Button(String(localized: "contextMenu.copySshError", defaultValue: "Copy SSH Error")) {
                 copyTextToPasteboard(copyableSidebarSSHError)
@@ -13443,6 +13456,9 @@ private struct SidebarTabDropDelegate: DropDelegate {
         dlog("sidebar.drop.commit tab=\(draggedTabId.uuidString.prefix(5)) from=\(fromIndex) to=\(targetIndex)")
 #endif
         _ = tabManager.reorderWorkspace(tabId: draggedTabId, toIndex: targetIndex)
+        if targetTabId == nil {
+            tabManager.moveWorkspaceToSpace(workspaceId: draggedTabId, spaceId: nil)
+        }
         if let selectedId = tabManager.selectedTabId {
             selectedTabIds = [selectedId]
             syncSidebarSelection(preferredSelectedTabId: selectedId)
