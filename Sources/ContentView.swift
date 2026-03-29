@@ -8609,7 +8609,12 @@ private struct SpaceHeaderView: View {
                 .frame(width: 12)
 
             // Optional color square
-            if let colorHex = space.color, let color = Color(hex: colorHex) {
+            if let colorHex = space.color,
+               let color = WorkspaceTabColorSettings.displayColor(
+                   hex: colorHex,
+                   colorScheme: colorScheme,
+                   forceBright: activeTabIndicatorStyle == .leftRail
+               ) {
                 RoundedRectangle(cornerRadius: 3)
                     .fill(color)
                     .frame(width: 10, height: 10)
@@ -8755,6 +8760,13 @@ struct VerticalTabsSidebar: View {
     private var workspacePresentationMode = WorkspacePresentationModeSettings.defaultMode.rawValue
     @AppStorage(KeyboardShortcutSettings.Action.selectWorkspaceByNumber.defaultsKey)
     private var selectWorkspaceByNumberShortcutData = Data()
+    @AppStorage(SidebarActiveTabIndicatorSettings.styleKey)
+    private var activeTabIndicatorStyleRaw = SidebarActiveTabIndicatorSettings.defaultStyle.rawValue
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var activeTabIndicatorStyle: SidebarActiveTabIndicatorStyle {
+        SidebarActiveTabIndicatorSettings.resolvedStyle(rawValue: activeTabIndicatorStyleRaw)
+    }
 
     /// Space at top of sidebar for traffic light buttons
     private let trafficLightPadding: CGFloat = 28
@@ -8851,7 +8863,11 @@ struct VerticalTabsSidebar: View {
                                         guard let spaceId = tab.spaceId,
                                               let space = tabManager.spaces.first(where: { $0.id == spaceId }),
                                               let hex = space.color else { return nil }
-                                        return Color(hex: hex)
+                                        return WorkspaceTabColorSettings.displayColor(
+                                            hex: hex,
+                                            colorScheme: colorScheme,
+                                            forceBright: activeTabIndicatorStyle == .leftRail
+                                        )
                                     }()
 
                                     HStack(spacing: 0) {
