@@ -5585,9 +5585,18 @@ extension TabManager {
         let selectedWorkspaceIndex = selectedTabId.flatMap { selectedTabId in
             restorableTabs.firstIndex(where: { $0.id == selectedTabId })
         }
+        let spaceSnapshots = spaces.map { space in
+            SessionSpaceSnapshot(
+                id: space.id,
+                name: space.name,
+                color: space.color,
+                isCollapsed: space.isCollapsed
+            )
+        }
         return SessionTabManagerSnapshot(
             selectedWorkspaceIndex: selectedWorkspaceIndex,
-            workspaces: workspaceSnapshots
+            workspaces: workspaceSnapshots,
+            spaces: spaceSnapshots
         )
     }
 
@@ -5661,6 +5670,23 @@ extension TabManager {
             newSelectedId = newTabs[selectedWorkspaceIndex].id
         } else {
             newSelectedId = newTabs.first?.id
+        }
+
+        // Restore spaces and reconcile orphaned spaceIds.
+        let restoredSpaces = snapshot.spaces.map { spaceSnapshot in
+            Space(
+                id: spaceSnapshot.id,
+                name: spaceSnapshot.name,
+                color: spaceSnapshot.color,
+                isCollapsed: spaceSnapshot.isCollapsed
+            )
+        }
+        spaces = restoredSpaces
+        let validSpaceIds = Set(restoredSpaces.map(\.id))
+        for tab in newTabs where tab.spaceId != nil {
+            if !validSpaceIds.contains(tab.spaceId!) {
+                tab.spaceId = nil
+            }
         }
 
         // Single atomic assignment of @Published properties so SwiftUI observers

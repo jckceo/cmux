@@ -95,3 +95,88 @@ final class SpacesCRUDTests: XCTestCase {
         XCTAssertEqual(manager.spaces.count, 32)
     }
 }
+
+@MainActor
+final class SpacesSessionPersistenceTests: XCTestCase {
+    func testSessionSnapshotRoundTripPreservesSpaces() {
+        let manager = TabManager()
+        let space = manager.addSpace(name: "Project A", color: "#8b5cf6")
+        let workspace = manager.addWorkspace()
+        manager.moveWorkspaceToSpace(workspaceId: workspace.id, spaceId: space.id)
+        manager.toggleSpaceCollapsed(spaceId: space.id)
+
+        let snapshot = manager.sessionSnapshot(includeScrollback: false)
+        XCTAssertEqual(snapshot.spaces.count, 1)
+        XCTAssertEqual(snapshot.spaces[0].name, "Project A")
+        XCTAssertTrue(snapshot.spaces[0].isCollapsed)
+
+        let restored = TabManager()
+        restored.restoreSessionSnapshot(snapshot)
+        XCTAssertEqual(restored.spaces.count, 1)
+        XCTAssertEqual(restored.spaces[0].name, "Project A")
+        XCTAssertTrue(restored.spaces[0].isCollapsed)
+
+        let restoredWorkspace = restored.tabs.first { $0.spaceId != nil }
+        XCTAssertNotNil(restoredWorkspace)
+        XCTAssertEqual(restoredWorkspace?.spaceId, restored.spaces[0].id)
+    }
+
+    func testSessionSnapshotBackwardCompatNoSpaces() {
+        // Create a snapshot WITHOUT spaces (simulating old format)
+        let manager = TabManager()
+        let snapshot = manager.sessionSnapshot(includeScrollback: false)
+
+        // Manually verify the snapshot can be encoded and decoded
+        let encoder = JSONEncoder()
+        let data = try! encoder.encode(snapshot)
+        // Remove "spaces" key to simulate old format
+        var json = try! JSONSerialization.jsonObject(with: data) as! [String: Any]
+        json.removeValue(forKey: "spaces")
+        // Also remove spaceId from workspaces
+        if var workspaces = json["workspaces"] as? [[String: Any]] {
+            for i in workspaces.indices {
+                workspaces[i].removeValue(forKey: "spaceId")
+            }
+            json["workspaces"] = workspaces
+        }
+        let modifiedData = try! JSONSerialization.data(withJSONObject: json)
+
+        let decoded = try! JSONDecoder().decode(SessionTabManagerSnapshot.self, from: modifiedData)
+        XCTAssertEqual(decoded.spaces.count, 0)
+        XCTAssertEqual(decoded.workspaces.count, snapshot.workspaces.count)
+        XCTAssertNil(decoded.workspaces[0].spaceId)
+    }
+
+    func testSessionSnapshotOrphanedSpaceIdFallsBackToRoot() {
+        let manager = TabManager()
+        let space = manager.addSpace(name: "Will Be Removed")
+        let workspace = manager.addWorkspace()
+        manager.moveWorkspaceToSpace(workspaceId: workspace.id, spaceId: space.id)
+
+        var snapshot = manager.sessionSnapshot(includeScrollback: false)
+        // Remove the space from snapshot but keep the workspace's spaceId
+        snapshot.spaces = []
+
+        let restored = TabManager()
+        restored.restoreSessionSnapshot(snapshot)
+        XCTAssertEqual(restored.spaces.count, 0)
+        // Workspace should fall back to root (spaceId cleared)
+        XCTAssertTrue(restored.tabs.allSatisfy { $0.spaceId == nil })
+    }
+
+    func testSessionSpaceSnapshotJsonCoding() throws {
+        let id = UUID()
+        let snapshot = SessionSpaceSnapshot(
+            id: id,
+            name: "Test",
+            color: "#FF0000",
+            isCollapsed: true
+        )
+        let data = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(SessionSpaceSnapshot.self, from: data)
+        XCTAssertEqual(decoded.id, id)
+        XCTAssertEqual(decoded.name, "Test")
+        XCTAssertEqual(decoded.color, "#FF0000")
+        XCTAssertTrue(decoded.isCollapsed)
+    }
+}

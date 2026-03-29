@@ -340,11 +340,80 @@ struct SessionWorkspaceSnapshot: Codable, Sendable {
     var logEntries: [SessionLogEntrySnapshot]
     var progress: SessionProgressSnapshot?
     var gitBranch: SessionGitBranchSnapshot?
+    var spaceId: UUID?
+
+    init(
+        processTitle: String,
+        customTitle: String? = nil,
+        customColor: String? = nil,
+        isPinned: Bool,
+        currentDirectory: String,
+        focusedPanelId: UUID? = nil,
+        layout: SessionWorkspaceLayoutSnapshot,
+        panels: [SessionPanelSnapshot],
+        statusEntries: [SessionStatusEntrySnapshot],
+        logEntries: [SessionLogEntrySnapshot],
+        progress: SessionProgressSnapshot? = nil,
+        gitBranch: SessionGitBranchSnapshot? = nil,
+        spaceId: UUID? = nil
+    ) {
+        self.processTitle = processTitle
+        self.customTitle = customTitle
+        self.customColor = customColor
+        self.isPinned = isPinned
+        self.currentDirectory = currentDirectory
+        self.focusedPanelId = focusedPanelId
+        self.layout = layout
+        self.panels = panels
+        self.statusEntries = statusEntries
+        self.logEntries = logEntries
+        self.progress = progress
+        self.gitBranch = gitBranch
+        self.spaceId = spaceId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        processTitle = try container.decode(String.self, forKey: .processTitle)
+        customTitle = try container.decodeIfPresent(String.self, forKey: .customTitle)
+        customColor = try container.decodeIfPresent(String.self, forKey: .customColor)
+        isPinned = try container.decode(Bool.self, forKey: .isPinned)
+        currentDirectory = try container.decode(String.self, forKey: .currentDirectory)
+        focusedPanelId = try container.decodeIfPresent(UUID.self, forKey: .focusedPanelId)
+        layout = try container.decode(SessionWorkspaceLayoutSnapshot.self, forKey: .layout)
+        panels = try container.decode([SessionPanelSnapshot].self, forKey: .panels)
+        statusEntries = try container.decode([SessionStatusEntrySnapshot].self, forKey: .statusEntries)
+        logEntries = try container.decode([SessionLogEntrySnapshot].self, forKey: .logEntries)
+        progress = try container.decodeIfPresent(SessionProgressSnapshot.self, forKey: .progress)
+        gitBranch = try container.decodeIfPresent(SessionGitBranchSnapshot.self, forKey: .gitBranch)
+        spaceId = try container.decodeIfPresent(UUID.self, forKey: .spaceId)
+    }
+}
+
+struct SessionSpaceSnapshot: Codable, Sendable {
+    var id: UUID
+    var name: String
+    var color: String?
+    var isCollapsed: Bool
 }
 
 struct SessionTabManagerSnapshot: Codable, Sendable {
     var selectedWorkspaceIndex: Int?
     var workspaces: [SessionWorkspaceSnapshot]
+    var spaces: [SessionSpaceSnapshot]
+
+    init(selectedWorkspaceIndex: Int? = nil, workspaces: [SessionWorkspaceSnapshot], spaces: [SessionSpaceSnapshot] = []) {
+        self.selectedWorkspaceIndex = selectedWorkspaceIndex
+        self.workspaces = workspaces
+        self.spaces = spaces
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        selectedWorkspaceIndex = try container.decodeIfPresent(Int.self, forKey: .selectedWorkspaceIndex)
+        workspaces = try container.decode([SessionWorkspaceSnapshot].self, forKey: .workspaces)
+        spaces = try container.decodeIfPresent([SessionSpaceSnapshot].self, forKey: .spaces) ?? []
+    }
 }
 
 struct SessionWindowSnapshot: Codable, Sendable {
