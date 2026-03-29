@@ -8591,8 +8591,14 @@ private struct SpaceHeaderView: View {
     let tabColorPalette: [WorkspaceTabColorEntry]
 
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(SidebarActiveTabIndicatorSettings.styleKey)
+    private var activeTabIndicatorStyleRaw = SidebarActiveTabIndicatorSettings.defaultStyle.rawValue
     @State private var isRenaming = false
     @State private var renameText = ""
+
+    private var activeTabIndicatorStyle: SidebarActiveTabIndicatorStyle {
+        SidebarActiveTabIndicatorSettings.resolvedStyle(rawValue: activeTabIndicatorStyleRaw)
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -8723,7 +8729,7 @@ private struct SpaceHeaderView: View {
         WorkspaceTabColorSettings.displayNSColor(
             hex: hex,
             colorScheme: colorScheme,
-            forceBright: false
+            forceBright: activeTabIndicatorStyle == .leftRail
         ) ?? NSColor(hex: hex) ?? .gray
     }
 }
@@ -12829,12 +12835,13 @@ private struct TabItemView: View, Equatable {
         colorPopup.addItem(withTitle: String(localized: "space.newAlert.noColor", defaultValue: "None"))
         let palette = WorkspaceTabColorSettings.palette()
         let swatchColorScheme = colorScheme
+        let swatchForceBright = activeTabIndicatorStyle == .leftRail
         for entry in palette {
             let item = NSMenuItem(title: entry.name, action: nil, keyEquivalent: "")
             let nsColor = WorkspaceTabColorSettings.displayNSColor(
                 hex: entry.hex,
                 colorScheme: swatchColorScheme,
-                forceBright: false
+                forceBright: swatchForceBright
             ) ?? NSColor(hex: entry.hex) ?? .gray
             let size: CGFloat = 12
             let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
