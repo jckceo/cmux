@@ -5434,6 +5434,7 @@ final class Workspace: Identifiable, ObservableObject {
     @Published var customTitle: String?
     @Published var isPinned: Bool = false
     @Published var customColor: String?  // hex string, e.g. "#C0392B"
+    @Published var spaceId: UUID?
     @Published var currentDirectory: String
     private(set) var preferredBrowserProfileID: UUID?
 

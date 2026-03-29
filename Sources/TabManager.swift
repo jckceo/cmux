@@ -9,6 +9,22 @@ import Combine
 // The old Tab class is replaced by Workspace
 typealias Tab = Workspace
 
+// MARK: - Spaces (Workspace Grouping)
+
+struct Space: Identifiable, Codable, Equatable {
+    let id: UUID
+    var name: String
+    var color: String?
+    var isCollapsed: Bool
+
+    init(id: UUID = UUID(), name: String, color: String? = nil, isCollapsed: Bool = false) {
+        self.id = id
+        self.name = name
+        self.color = color
+        self.isCollapsed = isCollapsed
+    }
+}
+
 enum NewWorkspacePlacement: String, CaseIterable, Identifiable {
     case top
     case afterCurrent
@@ -700,6 +716,8 @@ class TabManager: ObservableObject {
     private static let initialWorkspaceGitProbeDelays: [TimeInterval] = [0, 0.5, 1.5, 3.0, 6.0, 10.0]
     private static let workspaceGitMetadataPollInterval: TimeInterval = 30
     private nonisolated static let workspacePullRequestProbeTimeout: TimeInterval = 5.0
+    @Published var spaces: [Space] = []
+    private static let maxSpacesPerWindow: Int = 32
     @Published var selectedTabId: UUID? {
         willSet {
 #if DEBUG
@@ -5450,6 +5468,70 @@ class TabManager: ObservableObject {
         }
     }
 #endif
+
+    // MARK: - Space CRUD
+
+    @discardableResult
+    func addSpace(name: String, color: String? = nil) -> Space {
+        guard spaces.count < Self.maxSpacesPerWindow else {
+            return Space(name: name, color: color)
+        }
+        let space = Space(name: name, color: color)
+        spaces.append(space)
+        return space
+    }
+
+    func renameSpace(spaceId: UUID, name: String) {
+        guard let index = spaces.firstIndex(where: { $0.id == spaceId }) else { return }
+        spaces[index].name = name
+    }
+
+    func setSpaceColor(spaceId: UUID, color: String?) {
+        guard let index = spaces.firstIndex(where: { $0.id == spaceId }) else { return }
+        if let color {
+            spaces[index].color = WorkspaceTabColorSettings.normalizedHex(color)
+        } else {
+            spaces[index].color = nil
+        }
+    }
+
+    func toggleSpaceCollapsed(spaceId: UUID) {
+        guard let index = spaces.firstIndex(where: { $0.id == spaceId }) else { return }
+        spaces[index].isCollapsed.toggle()
+    }
+
+    func removeSpace(spaceId: UUID) {
+        guard spaces.contains(where: { $0.id == spaceId }) else { return }
+        for workspace in tabs where workspace.spaceId == spaceId {
+            workspace.spaceId = nil
+        }
+        spaces.removeAll { $0.id == spaceId }
+    }
+
+    func reorderSpace(spaceId: UUID, toIndex: Int) {
+        guard let fromIndex = spaces.firstIndex(where: { $0.id == spaceId }) else { return }
+        let space = spaces.remove(at: fromIndex)
+        let clampedIndex = max(0, min(toIndex, spaces.count))
+        spaces.insert(space, at: clampedIndex)
+    }
+
+    func moveWorkspaceToSpace(workspaceId: UUID, spaceId: UUID?) {
+        guard let workspace = tabs.first(where: { $0.id == workspaceId }) else { return }
+        if let spaceId {
+            guard spaces.contains(where: { $0.id == spaceId }) else { return }
+            workspace.spaceId = spaceId
+        } else {
+            workspace.spaceId = nil
+        }
+    }
+
+    func expandSpaceIfNeeded(containingWorkspaceId workspaceId: UUID) {
+        guard let workspace = tabs.first(where: { $0.id == workspaceId }),
+              let spaceId = workspace.spaceId,
+              let index = spaces.firstIndex(where: { $0.id == spaceId }),
+              spaces[index].isCollapsed else { return }
+        spaces[index].isCollapsed = false
+    }
 }
 
 extension TabManager {
