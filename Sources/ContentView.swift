@@ -12024,7 +12024,9 @@ private struct TabItemView: View, Equatable {
                 let name = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !name.isEmpty {
                     let space = tabManager.addSpace(name: name)
-                    tabManager.moveWorkspaceToSpace(workspaceId: tab.id, spaceId: space.id)
+                    for id in targetIds {
+                        tabManager.moveWorkspaceToSpace(workspaceId: id, spaceId: space.id)
+                    }
                 }
             }
         }
@@ -12033,14 +12035,20 @@ private struct TabItemView: View, Equatable {
             Menu(String(localized: "contextMenu.moveToSpace", defaultValue: "Move to Space")) {
                 ForEach(tabManager.spaces) { space in
                     Button(space.name) {
-                        tabManager.moveWorkspaceToSpace(workspaceId: tab.id, spaceId: space.id)
+                        for id in targetIds {
+                            tabManager.moveWorkspaceToSpace(workspaceId: id, spaceId: space.id)
+                        }
                     }
-                    .disabled(tab.spaceId == space.id)
+                    .disabled(targetIds.count == 1 && tab.spaceId == space.id)
                 }
-                if tab.spaceId != nil {
+                if targetIds.contains(where: { id in
+                    tabManager.tabs.first(where: { $0.id == id })?.spaceId != nil
+                }) {
                     Divider()
                     Button(String(localized: "contextMenu.removeFromSpace", defaultValue: "Remove from Space")) {
-                        tabManager.moveWorkspaceToSpace(workspaceId: tab.id, spaceId: nil)
+                        for id in targetIds {
+                            tabManager.moveWorkspaceToSpace(workspaceId: id, spaceId: nil)
+                        }
                     }
                 }
             }
