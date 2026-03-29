@@ -5324,6 +5324,14 @@ struct ContentView: View {
         )
         contributions.append(
             CommandPaletteCommandContribution(
+                commandId: "palette.newSpace",
+                title: constant(String(localized: "command.newSpace.title", defaultValue: "New Space")),
+                subtitle: constant(String(localized: "command.newSpace.subtitle", defaultValue: "Space")),
+                keywords: ["create", "new", "space", "group", "folder"]
+            )
+        )
+        contributions.append(
+            CommandPaletteCommandContribution(
                 commandId: "palette.newWindow",
                 title: constant(String(localized: "command.newWindow.title", defaultValue: "New Window")),
                 subtitle: constant(String(localized: "command.newWindow.subtitle", defaultValue: "Window")),
@@ -6026,6 +6034,26 @@ struct ContentView: View {
     private func registerCommandPaletteHandlers(_ registry: inout CommandPaletteHandlerRegistry) {
         registry.register(commandId: "palette.newWorkspace") {
             tabManager.addWorkspace()
+        }
+        registry.register(commandId: "palette.newSpace") {
+            // Defer so the command palette dismisses before the modal alert appears.
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                alert.messageText = String(localized: "space.newAlert.title", defaultValue: "New Space")
+                alert.informativeText = String(localized: "space.newAlert.message", defaultValue: "Enter a name for the new space:")
+                alert.addButton(withTitle: String(localized: "space.newAlert.create", defaultValue: "Create"))
+                alert.addButton(withTitle: String(localized: "space.newAlert.cancel", defaultValue: "Cancel"))
+                let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+                textField.placeholderString = String(localized: "space.newAlert.placeholder", defaultValue: "Space name")
+                alert.accessoryView = textField
+                alert.window.initialFirstResponder = textField
+                if alert.runModal() == .alertFirstButtonReturn {
+                    let name = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !name.isEmpty {
+                        tabManager.addSpace(name: name)
+                    }
+                }
+            }
         }
         registry.register(commandId: "palette.openFolder") {
             // Defer so the command palette dismisses before the modal sheet appears.
