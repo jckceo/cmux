@@ -3452,6 +3452,8 @@ class TabManager: ObservableObject {
         // Jump-to-unread should reveal the destination pane instead of keeping an old split-zoom
         // state active around it.
         tab.clearSplitZoom()
+        // If the target workspace is inside a collapsed Space, expand it so the workspace is visible.
+        expandSpaceIfNeeded(containingWorkspaceId: tabId)
         suppressFocusFlash = true
         focusTab(tabId, surfaceId: desiredPanelId, suppressFlash: true)
         suppressFocusFlash = false
