@@ -8574,11 +8574,33 @@ private struct SpaceHeaderView: View {
         .onTapGesture {
             tabManager.toggleSpaceCollapsed(spaceId: space.id)
         }
-        .onDrop(of: SidebarTabDragPayload.dropContentTypes, isTargeted: nil) { _ in
-            guard let draggedId = draggedTabId else { return false }
-            tabManager.moveWorkspaceToSpace(workspaceId: draggedId, spaceId: space.id)
-            if space.isCollapsed {
-                tabManager.toggleSpaceCollapsed(spaceId: space.id)
+        .onDrag {
+            SidebarSpaceDragPayload.provider(for: space.id)
+        }
+        .onDrop(of: SidebarTabDragPayload.dropContentTypes + SidebarSpaceDragPayload.dropContentTypes, isTargeted: nil) { providers in
+            // Check if it's a workspace drop
+            if let draggedId = draggedTabId {
+                tabManager.moveWorkspaceToSpace(workspaceId: draggedId, spaceId: space.id)
+                if space.isCollapsed {
+                    tabManager.toggleSpaceCollapsed(spaceId: space.id)
+                }
+                return true
+            }
+
+            // Check if it's a space reorder drop
+            guard let provider = providers.first(where: {
+                $0.hasItemConformingToTypeIdentifier(SidebarSpaceDragPayload.typeIdentifier)
+            }) else { return false }
+
+            provider.loadDataRepresentation(forTypeIdentifier: SidebarSpaceDragPayload.typeIdentifier) { data, _ in
+                guard let data, let str = String(data: data, encoding: .utf8),
+                      str.hasPrefix("cmux.sidebar-space."),
+                      let sourceId = UUID(uuidString: String(str.dropFirst("cmux.sidebar-space.".count))) else { return }
+                guard sourceId != space.id else { return }
+                DispatchQueue.main.async {
+                    guard let targetIndex = tabManager.spaces.firstIndex(where: { $0.id == space.id }) else { return }
+                    tabManager.reorderSpace(spaceId: sourceId, toIndex: targetIndex)
+                }
             }
             return true
         }
@@ -13243,6 +13265,23 @@ private enum SidebarTabDragPayload {
     static func provider(for tabId: UUID) -> NSItemProvider {
         let provider = NSItemProvider()
         let payload = "\(prefix)\(tabId.uuidString)"
+        provider.registerDataRepresentation(forTypeIdentifier: typeIdentifier, visibility: .ownProcess) { completion in
+            completion(payload.data(using: .utf8), nil)
+            return nil
+        }
+        return provider
+    }
+}
+
+private enum SidebarSpaceDragPayload {
+    static let typeIdentifier = "com.cmux.sidebar-space-reorder"
+    static let dropContentType = UTType(exportedAs: typeIdentifier)
+    static let dropContentTypes: [UTType] = [dropContentType]
+    private static let prefix = "cmux.sidebar-space."
+
+    static func provider(for spaceId: UUID) -> NSItemProvider {
+        let provider = NSItemProvider()
+        let payload = "\(prefix)\(spaceId.uuidString)"
         provider.registerDataRepresentation(forTypeIdentifier: typeIdentifier, visibility: .ownProcess) { completion in
             completion(payload.data(using: .utf8), nil)
             return nil
