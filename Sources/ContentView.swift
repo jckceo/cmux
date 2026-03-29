@@ -6064,17 +6064,22 @@ struct ContentView: View {
                 let colorPopup = NSPopUpButton(frame: NSRect(x: 50, y: 2, width: 190, height: 26), pullsDown: false)
                 colorPopup.addItem(withTitle: String(localized: "space.newAlert.noColor", defaultValue: "None"))
                 let palette = WorkspaceTabColorSettings.palette()
+                let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                let schemeForSwatch: ColorScheme = isDark ? .dark : .light
                 for entry in palette {
                     let item = NSMenuItem(title: entry.name, action: nil, keyEquivalent: "")
-                    if let nsColor = NSColor(hex: entry.hex) {
-                        let size: CGFloat = 12
-                        let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
-                            nsColor.setFill()
-                            NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3).fill()
-                            return true
-                        }
-                        item.image = image
+                    let nsColor = WorkspaceTabColorSettings.displayNSColor(
+                        hex: entry.hex,
+                        colorScheme: schemeForSwatch,
+                        forceBright: false
+                    ) ?? NSColor(hex: entry.hex) ?? .gray
+                    let size: CGFloat = 12
+                    let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+                        nsColor.setFill()
+                        NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3).fill()
+                        return true
                     }
+                    item.image = image
                     item.representedObject = entry.hex
                     colorPopup.menu?.addItem(item)
                 }
@@ -8585,6 +8590,7 @@ private struct SpaceHeaderView: View {
     @Binding var draggedTabId: UUID?
     let tabColorPalette: [WorkspaceTabColorEntry]
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isRenaming = false
     @State private var renameText = ""
 
@@ -8714,7 +8720,11 @@ private struct SpaceHeaderView: View {
     }
 
     private func tabColorSwatchColor(for hex: String) -> NSColor {
-        NSColor(hex: hex) ?? .gray
+        WorkspaceTabColorSettings.displayNSColor(
+            hex: hex,
+            colorScheme: colorScheme,
+            forceBright: false
+        ) ?? NSColor(hex: hex) ?? .gray
     }
 }
 
@@ -12818,17 +12828,21 @@ private struct TabItemView: View, Equatable {
         let colorPopup = NSPopUpButton(frame: NSRect(x: 50, y: 2, width: 190, height: 26), pullsDown: false)
         colorPopup.addItem(withTitle: String(localized: "space.newAlert.noColor", defaultValue: "None"))
         let palette = WorkspaceTabColorSettings.palette()
+        let swatchColorScheme = colorScheme
         for entry in palette {
             let item = NSMenuItem(title: entry.name, action: nil, keyEquivalent: "")
-            if let nsColor = NSColor(hex: entry.hex) {
-                let size: CGFloat = 12
-                let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
-                    nsColor.setFill()
-                    NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3).fill()
-                    return true
-                }
-                item.image = image
+            let nsColor = WorkspaceTabColorSettings.displayNSColor(
+                hex: entry.hex,
+                colorScheme: swatchColorScheme,
+                forceBright: false
+            ) ?? NSColor(hex: entry.hex) ?? .gray
+            let size: CGFloat = 12
+            let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+                nsColor.setFill()
+                NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3).fill()
+                return true
             }
+            item.image = image
             item.representedObject = entry.hex
             colorPopup.menu?.addItem(item)
         }
