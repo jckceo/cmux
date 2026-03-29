@@ -180,3 +180,60 @@ final class SpacesSessionPersistenceTests: XCTestCase {
         XCTAssertTrue(decoded.isCollapsed)
     }
 }
+
+@MainActor
+final class SpacesWorkspaceMoveTests: XCTestCase {
+    func testMoveWorkspaceToSpace() {
+        let manager = TabManager()
+        let space = manager.addSpace(name: "Project")
+        let workspace = manager.addWorkspace()
+        manager.moveWorkspaceToSpace(workspaceId: workspace.id, spaceId: space.id)
+        XCTAssertEqual(workspace.spaceId, space.id)
+    }
+
+    func testMoveWorkspaceToRootClearsSpaceId() {
+        let manager = TabManager()
+        let space = manager.addSpace(name: "Project")
+        let workspace = manager.addWorkspace()
+        manager.moveWorkspaceToSpace(workspaceId: workspace.id, spaceId: space.id)
+        manager.moveWorkspaceToSpace(workspaceId: workspace.id, spaceId: nil)
+        XCTAssertNil(workspace.spaceId)
+    }
+
+    func testMoveWorkspaceToInvalidSpaceIsNoOp() {
+        let manager = TabManager()
+        let workspace = manager.addWorkspace()
+        manager.moveWorkspaceToSpace(workspaceId: workspace.id, spaceId: UUID())
+        XCTAssertNil(workspace.spaceId)
+    }
+
+    func testExpandSpaceIfNeededExpandsCollapsedSpace() {
+        let manager = TabManager()
+        let space = manager.addSpace(name: "Project")
+        let workspace = manager.addWorkspace()
+        manager.moveWorkspaceToSpace(workspaceId: workspace.id, spaceId: space.id)
+        manager.toggleSpaceCollapsed(spaceId: space.id)
+        XCTAssertTrue(manager.spaces[0].isCollapsed)
+
+        manager.expandSpaceIfNeeded(containingWorkspaceId: workspace.id)
+        XCTAssertFalse(manager.spaces[0].isCollapsed)
+    }
+
+    func testExpandSpaceIfNeededNoOpForUngroupedWorkspace() {
+        let manager = TabManager()
+        let workspace = manager.addWorkspace()
+        manager.expandSpaceIfNeeded(containingWorkspaceId: workspace.id)
+        // No crash, no-op
+    }
+
+    func testExpandSpaceIfNeededNoOpForAlreadyExpandedSpace() {
+        let manager = TabManager()
+        let space = manager.addSpace(name: "Project")
+        let workspace = manager.addWorkspace()
+        manager.moveWorkspaceToSpace(workspaceId: workspace.id, spaceId: space.id)
+        XCTAssertFalse(manager.spaces[0].isCollapsed)
+
+        manager.expandSpaceIfNeeded(containingWorkspaceId: workspace.id)
+        XCTAssertFalse(manager.spaces[0].isCollapsed)
+    }
+}
