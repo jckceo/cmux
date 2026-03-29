@@ -8593,8 +8593,6 @@ private struct SpaceHeaderView: View {
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(SidebarActiveTabIndicatorSettings.styleKey)
     private var activeTabIndicatorStyleRaw = SidebarActiveTabIndicatorSettings.defaultStyle.rawValue
-    @State private var isRenaming = false
-    @State private var renameText = ""
 
     private var activeTabIndicatorStyle: SidebarActiveTabIndicatorStyle {
         SidebarActiveTabIndicatorSettings.resolvedStyle(rawValue: activeTabIndicatorStyleRaw)
@@ -8620,27 +8618,10 @@ private struct SpaceHeaderView: View {
                     .frame(width: 10, height: 10)
             }
 
-            // Name or rename field
-            if isRenaming {
-                TextField("", text: $renameText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
-                    .onSubmit {
-                        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty {
-                            tabManager.renameSpace(spaceId: space.id, name: trimmed)
-                        }
-                        isRenaming = false
-                    }
-                    .onExitCommand {
-                        isRenaming = false
-                    }
-            } else {
-                Text(space.name)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
+            Text(space.name)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
 
             Spacer()
 
@@ -8651,7 +8632,7 @@ private struct SpaceHeaderView: View {
                     .foregroundColor(.white)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
-                    .background(Capsule().fill(Color.red))
+                    .background(Capsule().fill(cmuxAccentColor()))
             }
         }
         .padding(.horizontal, 8)
@@ -8691,9 +8672,32 @@ private struct SpaceHeaderView: View {
             return true
         }
         .contextMenu {
-            Button(String(localized: "contextMenu.renameSpace", defaultValue: "Rename Space")) {
-                renameText = space.name
-                isRenaming = true
+            Button(String(localized: "contextMenu.renameSpace", defaultValue: "Rename Space…")) {
+                let currentName = space.name
+                let spaceId = space.id
+                DispatchQueue.main.async {
+                    let alert = NSAlert()
+                    alert.messageText = String(localized: "alert.renameSpace.title", defaultValue: "Rename Space")
+                    alert.informativeText = String(localized: "alert.renameSpace.message", defaultValue: "Enter a new name for this space.")
+                    let input = NSTextField(string: currentName)
+                    input.placeholderString = String(localized: "alert.renameSpace.placeholder", defaultValue: "Space name")
+                    input.frame = NSRect(x: 0, y: 0, width: 240, height: 22)
+                    alert.accessoryView = input
+                    alert.addButton(withTitle: String(localized: "alert.renameSpace.rename", defaultValue: "Rename"))
+                    alert.addButton(withTitle: String(localized: "alert.renameSpace.cancel", defaultValue: "Cancel"))
+                    let alertWindow = alert.window
+                    alertWindow.initialFirstResponder = input
+                    DispatchQueue.main.async {
+                        alertWindow.makeFirstResponder(input)
+                        input.selectText(nil)
+                    }
+                    let response = alert.runModal()
+                    guard response == .alertFirstButtonReturn else { return }
+                    let trimmed = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        tabManager.renameSpace(spaceId: spaceId, name: trimmed)
+                    }
+                }
             }
 
             Menu(String(localized: "contextMenu.spaceColor", defaultValue: "Space Color")) {
