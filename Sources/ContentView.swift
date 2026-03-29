@@ -8492,6 +8492,133 @@ private struct SidebarResizerAccessibilityModifier: ViewModifier {
     }
 }
 
+// MARK: - Sidebar Grouped Rendering
+
+private enum SidebarRenderItem: Identifiable {
+    case workspace(index: Int, workspace: Workspace)
+    case spaceHeader(space: Space, unreadCount: Int)
+
+    var id: String {
+        switch self {
+        case .workspace(_, let workspace):
+            return "ws-\(workspace.id.uuidString)"
+        case .spaceHeader(let space, _):
+            return "sp-\(space.id.uuidString)"
+        }
+    }
+}
+
+private struct SpaceHeaderView: View {
+    let space: Space
+    let unreadCount: Int
+    let tabManager: TabManager
+    let notificationStore: TerminalNotificationStore
+    @Binding var draggedTabId: UUID?
+    let tabColorPalette: [WorkspaceTabColorEntry]
+
+    @State private var isRenaming = false
+    @State private var renameText = ""
+
+    var body: some View {
+        HStack(spacing: 6) {
+            // Collapse chevron
+            Image(systemName: space.isCollapsed ? "chevron.right" : "chevron.down")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.secondary)
+                .frame(width: 12)
+
+            // Optional color square
+            if let colorHex = space.color, let color = Color(hex: colorHex) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(color)
+                    .frame(width: 10, height: 10)
+            }
+
+            // Name or rename field
+            if isRenaming {
+                TextField("", text: $renameText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                    .onSubmit {
+                        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            tabManager.renameSpace(spaceId: space.id, name: trimmed)
+                        }
+                        isRenaming = false
+                    }
+                    .onExitCommand {
+                        isRenaming = false
+                    }
+            } else {
+                Text(space.name)
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
+            Spacer()
+
+            // Notification badge when collapsed
+            if space.isCollapsed && unreadCount > 0 {
+                Text("\(unreadCount)")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.red))
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            tabManager.toggleSpaceCollapsed(spaceId: space.id)
+        }
+        .contextMenu {
+            Button(String(localized: "contextMenu.renameSpace", defaultValue: "Rename Space")) {
+                renameText = space.name
+                isRenaming = true
+            }
+
+            Menu(String(localized: "contextMenu.spaceColor", defaultValue: "Space Color")) {
+                if space.color != nil {
+                    Button {
+                        tabManager.setSpaceColor(spaceId: space.id, color: nil)
+                    } label: {
+                        Label(String(localized: "contextMenu.clearColor", defaultValue: "Clear Color"), systemImage: "xmark.circle")
+                    }
+                }
+
+                if !tabColorPalette.isEmpty {
+                    Divider()
+                }
+
+                ForEach(tabColorPalette, id: \.id) { entry in
+                    Button {
+                        tabManager.setSpaceColor(spaceId: space.id, color: entry.hex)
+                    } label: {
+                        Label {
+                            Text(entry.name)
+                        } icon: {
+                            Image(nsImage: coloredCircleImage(color: tabColorSwatchColor(for: entry.hex)))
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
+            Button(String(localized: "contextMenu.removeSpace", defaultValue: "Remove Space")) {
+                tabManager.removeSpace(spaceId: space.id)
+            }
+        }
+    }
+
+    private func tabColorSwatchColor(for hex: String) -> NSColor {
+        NSColor(hex: hex) ?? .gray
+    }
+}
+
 struct VerticalTabsSidebar: View {
     @ObservedObject var updateViewModel: UpdateViewModel
     let onSendFeedback: () -> Void
@@ -8545,10 +8672,36 @@ struct VerticalTabsSidebar: View {
         return shortcut
     }
 
+    private func sidebarRenderItems() -> [SidebarRenderItem] {
+        var items: [SidebarRenderItem] = []
+        let indexedTabs = Array(tabManager.tabs.enumerated())
+
+        // Ungrouped workspaces first
+        for (index, workspace) in indexedTabs where workspace.spaceId == nil {
+            items.append(.workspace(index: index, workspace: workspace))
+        }
+
+        // Then each space with its workspaces
+        for space in tabManager.spaces {
+            let spaceWorkspaces = indexedTabs.filter { $0.element.spaceId == space.id }
+            let unreadCount = spaceWorkspaces.reduce(0) { sum, pair in
+                sum + notificationStore.unreadCount(forTabId: pair.element.id)
+            }
+            items.append(.spaceHeader(space: space, unreadCount: unreadCount))
+            if !space.isCollapsed {
+                for (index, workspace) in spaceWorkspaces {
+                    items.append(.workspace(index: index, workspace: workspace))
+                }
+            }
+        }
+        return items
+    }
+
     var body: some View {
         let workspaceCount = tabManager.tabs.count
         let canCloseWorkspace = workspaceCount > 1
         let workspaceNumberShortcut = self.workspaceNumberShortcut
+        let spaceTabColorPalette = WorkspaceTabColorSettings.palette()
 
         VStack(spacing: 0) {
             GeometryReader { proxy in
@@ -8559,50 +8712,79 @@ struct VerticalTabsSidebar: View {
                             .frame(height: trafficLightPadding)
 
                         LazyVStack(spacing: tabRowSpacing) {
-                            ForEach(Array(tabManager.tabs.enumerated()), id: \.element.id) { index, tab in
-                                let selectedContextIds: Set<UUID> = selectedTabIds.contains(tab.id) ? selectedTabIds : [tab.id]
-                                let contextTargetIds = tabManager.tabs.compactMap { workspace in
-                                    selectedContextIds.contains(workspace.id) ? workspace.id : nil
-                                }
-                                let remoteContextMenuTargets = tabManager.tabs.filter { workspace in
-                                    contextTargetIds.contains(workspace.id) && workspace.isRemoteWorkspace
-                                }
-                                TabItemView(
-                                    tabManager: tabManager,
-                                    notificationStore: notificationStore,
-                                    tab: tab,
-                                    index: index,
-                                    isActive: tabManager.selectedTabId == tab.id,
-                                    workspaceShortcutDigit: WorkspaceShortcutMapper.digitForWorkspace(
-                                        at: index,
-                                        workspaceCount: workspaceCount
-                                    ),
-                                    workspaceShortcutModifierSymbol: workspaceNumberShortcut.modifierDisplayString,
-                                    canCloseWorkspace: canCloseWorkspace,
-                                    accessibilityWorkspaceCount: workspaceCount,
-                                    unreadCount: notificationStore.unreadCount(forTabId: tab.id),
-                                    latestNotificationText: {
-                                        guard showsSidebarNotificationMessage,
-                                              let notification = notificationStore.latestNotification(forTabId: tab.id) else {
-                                            return nil
+                            ForEach(sidebarRenderItems()) { item in
+                                switch item {
+                                case .spaceHeader(let space, let unreadCount):
+                                    SpaceHeaderView(
+                                        space: space,
+                                        unreadCount: unreadCount,
+                                        tabManager: tabManager,
+                                        notificationStore: notificationStore,
+                                        draggedTabId: $draggedTabId,
+                                        tabColorPalette: spaceTabColorPalette
+                                    )
+                                case .workspace(let index, let tab):
+                                    let selectedContextIds: Set<UUID> = selectedTabIds.contains(tab.id) ? selectedTabIds : [tab.id]
+                                    let contextTargetIds = tabManager.tabs.compactMap { workspace in
+                                        selectedContextIds.contains(workspace.id) ? workspace.id : nil
+                                    }
+                                    let remoteContextMenuTargets = tabManager.tabs.filter { workspace in
+                                        contextTargetIds.contains(workspace.id) && workspace.isRemoteWorkspace
+                                    }
+                                    let belongsToSpace = tab.spaceId != nil
+                                    let spaceColor: Color? = {
+                                        guard let spaceId = tab.spaceId,
+                                              let space = tabManager.spaces.first(where: { $0.id == spaceId }),
+                                              let hex = space.color else { return nil }
+                                        return Color(hex: hex)
+                                    }()
+
+                                    HStack(spacing: 0) {
+                                        if belongsToSpace {
+                                            Rectangle()
+                                                .fill(spaceColor ?? Color.secondary.opacity(0.3))
+                                                .frame(width: 2)
+                                            Spacer()
+                                                .frame(width: 10)
                                         }
-                                        let text = notification.body.isEmpty ? notification.title : notification.body
-                                        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                                        return trimmed.isEmpty ? nil : trimmed
-                                    }(),
-                                    rowSpacing: tabRowSpacing,
-                                    setSelectionToTabs: { selection = .tabs },
-                                    selectedTabIds: $selectedTabIds,
-                                    lastSidebarSelectionIndex: $lastSidebarSelectionIndex,
-                                    showsModifierShortcutHints: modifierKeyMonitor.isModifierPressed,
-                                    dragAutoScrollController: dragAutoScrollController,
-                                    draggedTabId: $draggedTabId,
-                                    dropIndicator: $dropIndicator,
-                                    remoteContextMenuWorkspaceIds: remoteContextMenuTargets.map(\.id),
-                                    allRemoteContextMenuTargetsConnecting: !remoteContextMenuTargets.isEmpty && remoteContextMenuTargets.allSatisfy { $0.remoteConnectionState == .connecting },
-                                    allRemoteContextMenuTargetsDisconnected: !remoteContextMenuTargets.isEmpty && remoteContextMenuTargets.allSatisfy { $0.remoteConnectionState == .disconnected }
-                                )
-                                .equatable()
+                                        TabItemView(
+                                            tabManager: tabManager,
+                                            notificationStore: notificationStore,
+                                            tab: tab,
+                                            index: index,
+                                            isActive: tabManager.selectedTabId == tab.id,
+                                            workspaceShortcutDigit: WorkspaceShortcutMapper.digitForWorkspace(
+                                                at: index,
+                                                workspaceCount: workspaceCount
+                                            ),
+                                            workspaceShortcutModifierSymbol: workspaceNumberShortcut.modifierDisplayString,
+                                            canCloseWorkspace: canCloseWorkspace,
+                                            accessibilityWorkspaceCount: workspaceCount,
+                                            unreadCount: notificationStore.unreadCount(forTabId: tab.id),
+                                            latestNotificationText: {
+                                                guard showsSidebarNotificationMessage,
+                                                      let notification = notificationStore.latestNotification(forTabId: tab.id) else {
+                                                    return nil
+                                                }
+                                                let text = notification.body.isEmpty ? notification.title : notification.body
+                                                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                                                return trimmed.isEmpty ? nil : trimmed
+                                            }(),
+                                            rowSpacing: tabRowSpacing,
+                                            setSelectionToTabs: { selection = .tabs },
+                                            selectedTabIds: $selectedTabIds,
+                                            lastSidebarSelectionIndex: $lastSidebarSelectionIndex,
+                                            showsModifierShortcutHints: modifierKeyMonitor.isModifierPressed,
+                                            dragAutoScrollController: dragAutoScrollController,
+                                            draggedTabId: $draggedTabId,
+                                            dropIndicator: $dropIndicator,
+                                            remoteContextMenuWorkspaceIds: remoteContextMenuTargets.map(\.id),
+                                            allRemoteContextMenuTargetsConnecting: !remoteContextMenuTargets.isEmpty && remoteContextMenuTargets.allSatisfy { $0.remoteConnectionState == .connecting },
+                                            allRemoteContextMenuTargetsDisconnected: !remoteContextMenuTargets.isEmpty && remoteContextMenuTargets.allSatisfy { $0.remoteConnectionState == .disconnected }
+                                        )
+                                        .equatable()
+                                    }
+                                }
                             }
                         }
                         .padding(.vertical, 8)
